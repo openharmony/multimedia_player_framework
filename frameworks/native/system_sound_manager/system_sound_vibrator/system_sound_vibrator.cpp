@@ -15,6 +15,10 @@
 
 #include "system_sound_vibrator.h"
 
+#include <cctype>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -117,6 +121,26 @@ int32_t SystemSoundVibrator::StartVibratorForSystemTone(const std::string &hapti
     return result;
 }
 
+static bool ParseFdNumber(const std::string &numberPart, int32_t &out)
+{
+    if (numberPart.empty()) {
+        return false;
+    }
+    for (unsigned char c : numberPart) {
+        if (!isdigit(c)) {
+            return false;
+        }
+    }
+    char *end = nullptr;
+    errno = 0;
+    long parsed = strtol(numberPart.c_str(), &end, 10);
+    if (end == numberPart.c_str() || *end != '\0' || errno == ERANGE || parsed < 0 || parsed > INT_MAX) {
+        return false;
+    }
+    out = static_cast<int32_t>(parsed);
+    return true;
+}
+
 int32_t SystemSoundVibrator::ExtractFd(const std::string &hapticsUri)
 {
     if (hapticsUri.size() <= PREFIX.size() || hapticsUri.substr(0, PREFIX.length()) != PREFIX) {
@@ -124,14 +148,12 @@ int32_t SystemSoundVibrator::ExtractFd(const std::string &hapticsUri)
         return -1;
     }
 
-    std::string numberPart = hapticsUri.substr(PREFIX.length());
-    for (char c : numberPart) {
-        if (!std::isdigit(c)) {
-            MEDIA_LOGE("ExtractFd: The part after the PREFIX is not all digits.");
-            return -1;
-        }
+    int32_t fd = -1;
+    if (!ParseFdNumber(hapticsUri.substr(PREFIX.length()), fd)) {
+        MEDIA_LOGE("ExtractFd: The part after the PREFIX is not a valid fd number.");
+        return -1;
     }
-    return std::stoi(numberPart);
+    return fd;
 }
 
 int32_t SystemSoundVibrator::StartVibratorForFastMode()
